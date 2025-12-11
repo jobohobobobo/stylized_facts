@@ -1,0 +1,93 @@
+---
+title: "stylized facts"
+author: "Jonathan Vasquez"
+output: github_document
+---
+
+## Setup
+
+```{r}
+#install.packages("geepack", "marginaleffects") #install once if needed
+library(tidyverse)
+library(scales)
+library(geepack)
+library(dplyr)
+library(marginaleffects)
+library(ggplot2)
+library(emmeans)
+```
+
+### Loading and Preparing Data
+
+```{r}
+df <- read_csv("df_lag.csv")
+df
+```
+
+```{r}
+#Setting index
+df <- df |> 
+  dplyr::arrange(country, year)
+
+df$country <- factor(df$country)  # safest
+
+# or create an explicit numeric id
+df$country_id <- as.integer(factor(df$country))
+```
+
+```{r}
+# Releveling categorical variables
+df$income <- relevel(factor(df$income), ref = "Low income")
+df$hdicode <- relevel(factor(df$hdicode), ref = "Low")
+```
+
+```{r}
+## GEE with AR1 correlation structure
+df <- df %>%
+  arrange(country, year)
+
+gee_ar1 <- geeglm(
+ ln_co2 ~ 1 + ln_co2_lag1 + kyoto_dummy + paris_dummy + time_kyoto + time_paris + time + ln_population + income + kyoto_dummy * income + paris_dummy * income,
+  data = df,
+  id = country,
+  waves = year,         
+  family = gaussian,    
+  corstr = "ar1",
+  std.err = "san.se"     
+)
+summary(gee_ar1)
+```
+
+```{r}
+# Model Predictions for the Kyoto Protocol
+plot_predictions(gee_ar1, by = c("kyoto_dummy", "income")) +
+  theme_minimal() +
+  labs(y = "Predicted y", x = "Kyoto participation")
+```
+
+```{r}
+# Model Predictions for the Paris Agreement
+plot_predictions(gee_ar1, by = c("paris_dummy", "income")) +
+  theme_minimal() +
+  labs(y = "Predicted y", x = "Kyoto participation")
+```
+
+```{r}
+emm_p <- emmeans(gee_ar1, ~ paris_dummy | income)
+p <- plot(emm_p)
+
+pdf("emm_plot_paris.pdf", width = 11, height = 8)
+print(p)
+dev.off()
+pairs(emm_p)
+```
+
+```{r}
+emm_k <- emmeans(gee_ar1, ~ kyoto_dummy | income)
+k <- plot(emm_k)
+
+pdf("emm_plot_kyoto.pdf", width = 11, height = 8)
+print(k)
+dev.off()
+pairs(emm_k)
+```
